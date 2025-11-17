@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Album Viewer (Web)</title>
+    <title>Album Viewer (Web-Fixed)</title>
     <style>
         /* CSS Reset cho di động */
         * {
@@ -22,7 +22,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden; /* Chặn cuộn trang */
+            overflow: hidden;
         }
 
         /* Giao diện chính (Luôn hiện) */
@@ -79,7 +79,7 @@
         #loupeDiv {
             position: fixed;
             pointer-events: none;
-            border: 3px solid #00e5ff; /* Mỏng hơn cho iPhone */
+            border: 3px solid #00e5ff;
             box-shadow: 0 0 10px rgba(0,0,0,0.5);
             border-radius: 50%;
             transform: translate(-50%, -50%);
@@ -93,7 +93,7 @@
         .sidebar-wrapper {
             position: fixed;
             top: 0;
-            right: 0; /* Mặc định bên phải */
+            right: 0;
             height: 100%;
             display: flex;
             align-items: center;
@@ -107,28 +107,28 @@
         .sidebar {
             display: flex;
             flex-direction: column;
-            gap: 10px; /* Thu hẹp */
+            gap: 10px;
             align-items: center;
             background: rgba(30, 30, 30, 0.9);
             backdrop-filter: blur(10px);
-            padding: 10px; /* Thu hẹp */
+            padding: 10px;
             height: auto;
             max-height: 95%;
             border-radius: 12px;
             border: 1px solid #444;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
-        .sidebar-wrapper:not(.left) .sidebar { margin-right: 5px; } /* Gần mép hơn */
+        .sidebar-wrapper:not(.left) .sidebar { margin-right: 5px; }
         .sidebar-wrapper.left .sidebar { margin-left: 5px; }
         
         .divider { width: 80%; height: 1px; background: #555; }
 
         .tool-btn {
-            font-size: 18px; /* Thu nhỏ */
+            font-size: 18px;
             background: #555;
             color: #fff;
             border: none;
-            width: 40px; height: 40px; /* Thu nhỏ */
+            width: 40px; height: 40px;
             border-radius: 8px;
             cursor: pointer;
             display: flex;
@@ -143,7 +143,7 @@
             top: 50%;
             left: -30px; 
             transform: translateY(-50%);
-            width: 18px; height: 50px; /* Thu nhỏ */
+            width: 18px; height: 50px;
             border-radius: 8px 0 0 8px;
             font-size: 14px;
             padding: 0;
@@ -164,7 +164,7 @@
             top: 50%;
             right: 0; 
             transform: translateY(-50%);
-            width: 18px; height: 50px; /* Thu nhỏ */
+            width: 18px; height: 50px;
             border-radius: 8px 0 0 8px;
             font-size: 14px;
             padding: 0;
@@ -266,11 +266,11 @@
         // --- Logic Vars ---
         const imgOriginal = new Image();
         let currentEditURL = '';
-        let currentImageIndex = 1; // Bắt đầu từ 1
+        let currentImageIndex = 1; 
         let brushSize = 50;
         let scale = 1; let panX = 0; let panY = 0;
         
-        const TOUCH_OFFSET_Y = -60; // Giảm offset cho iPhone
+        const TOUCH_OFFSET_Y = -60; 
         let isDrawing = false; 
         let isGesturing = false;
         
@@ -279,68 +279,95 @@
 
         let currentTool = 'loupe';
         let isSwitching = false;
+        
+        // DANH SÁCH ĐUÔI FILE ĐỂ THỬ
+        const EXTENSIONS = ["jpg", "jpeg", "png", "webp"];
 
         // --- TỰ ĐỘNG CHẠY KHI MỞ FILE ---
         window.onload = () => {
-            setTool('loupe'); // Đặt tool mặc định
+            setTool('loupe');
             loadPair(1); // Tự động load ảnh số 1
         };
 
-        // --- LOAD ẢNH (Logic Web-Hosted) ---
+        // --- LOAD ẢNH (ĐÃ SỬA LỖI ĐUÔI FILE) ---
+        
+        // Hàm trợ giúp: Thử tìm file với các đuôi khác nhau
+        function findFile(index, type, callback) {
+            let extIndex = 0;
+            
+            function tryNext() {
+                if (extIndex >= EXTENSIONS.length) {
+                    // Đã thử hết đuôi file mà không thấy
+                    callback(null); 
+                    return;
+                }
+                
+                const url = `${index}${type}.${EXTENSIONS[extIndex]}`;
+                const temp = new Image();
+                temp.onload = () => callback(url); // Thành công! Trả về URL đúng
+                temp.onerror = () => { // Lỗi, thử đuôi file tiếp theo
+                    extIndex++;
+                    tryNext();
+                };
+                temp.src = url;
+            }
+            
+            tryNext(); // Bắt đầu thử
+        }
+        
         function loadPair(index) {
-            if (index < 1) return; // Không cho lùi về 0
+            if (index < 1) return;
             if (isSwitching) return;
             
             isSwitching = true;
             statusMsg.style.display = 'block';
-            
-            // Tìm file trong cùng thư mục (ví dụ: "1o.jpg")
-            const urlO = `${index}o.jpg`;
-            const urlE = `${index}e.jpg`;
 
-            // Dùng 1 ảnh tạm để kiểm tra
-            const temp = new Image();
-            
-            temp.onload = () => {
-                // Nếu ảnh tạm tải OK
-                imgOriginal.onload = () => {
-                    canvas.width = imgOriginal.naturalWidth;
-                    canvas.height = imgOriginal.naturalHeight;
-                    stage.style.width = canvas.width + "px";
-                    stage.style.height = canvas.height + "px";
-                    
-                    stage.style.backgroundImage = `url('${urlE}')`;
-                    loupeDiv.style.backgroundImage = `url('${urlE}')`;
-                    
-                    resetView();
-                    drawFullOriginal();
+            // 1. Tìm file Original
+            findFile(index, 'o', (urlO) => {
+                if (!urlO) {
+                    // Không tìm thấy file Original
                     statusMsg.style.display = 'none';
                     isSwitching = false;
-                    currentImageIndex = index; // Cập nhật index
-                };
-                imgOriginal.onerror = () => { 
-                    statusMsg.style.display = 'none';
-                    isSwitching = false;
-                    alert(`Lỗi: Không tải được ảnh ${urlE}`);
-                };
-                imgCounter.innerText = `Ảnh ${index}`;
-                imgOriginal.src = urlO;
-                currentEditURL = urlE;
-            };
-            
-            temp.onerror = () => {
-                // Nếu ảnh tạm (1o.jpg) tải lỗi (404)
-                statusMsg.style.display = 'none';
-                isSwitching = false;
-                if (index > 1) { // Chỉ báo lỗi nếu đang bấm Next
-                    alert("Đã hết ảnh trong album này.");
-                } else {
-                    alert("Lỗi: Không tìm thấy file '1o.jpg'. Hãy chắc chắn bạn đã upload ảnh.");
+                    if (index > 1) alert("Đã hết ảnh trong album này.");
+                    else alert("Lỗi: Không tìm thấy file '1o' (với đuôi .jpg, .png...)");
+                    return;
                 }
-            };
-            
-            temp.src = urlO; // Bắt đầu tải ảnh tạm
+
+                // 2. Tìm file Edit
+                findFile(index, 'e', (urlE) => {
+                    if (!urlE) {
+                        // Tìm thấy Original nhưng không thấy Edit
+                        statusMsg.style.display = 'none';
+                        isSwitching = false;
+                        alert(`Lỗi: Tìm thấy ${urlO} nhưng không tìm thấy file Edit (e.g., ${index}e.jpg)`);
+                        return;
+                    }
+
+                    // 3. THÀNH CÔNG! (Tải ảnh thật)
+                    imgOriginal.onload = () => {
+                        canvas.width = imgOriginal.naturalWidth;
+                        canvas.height = imgOriginal.naturalHeight;
+                        stage.style.width = canvas.width + "px";
+                        stage.style.height = canvas.height + "px";
+                        
+                        stage.style.backgroundImage = `url('${urlE}')`;
+                        loupeDiv.style.backgroundImage = `url('${urlE}')`;
+                        
+                        resetView();
+                        drawFullOriginal();
+                        statusMsg.style.display = 'none';
+                        isSwitching = false;
+                        currentImageIndex = index;
+                    };
+                    imgOriginal.onerror = () => { /* Xử lý lỗi hiếm */ };
+                    
+                    imgCounter.innerText = `Ảnh ${index}`;
+                    imgOriginal.src = urlO;
+                    currentEditURL = urlE;
+                });
+            });
         }
+
 
         // --- HÀM VẼ & RESET ---
         function drawFullOriginal() {
