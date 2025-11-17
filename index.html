@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Album Viewer (Web)</title>
+    <style>
+        /* CSS Reset cho di động */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+        }
+        body {
+            background-color: #121212;
+            color: #ccc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden; /* Chặn cuộn trang */
+        }
+
+        /* Giao diện chính (Luôn hiện) */
+        #gameUI {
+            display: flex; /* Mặc định hiện */
+            width: 100%; height: 100%;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* Viewport */
+        #viewport {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            position: relative;
+            overflow: hidden;
+            cursor: none;
+        }
+        #stage {
+            position: absolute; top: 0; left: 0;
+            transform-origin: 0 0;
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
+        }
+        canvas { 
+            display: block; 
+            transition: opacity 0.1s;
+            transform: translateZ(0); 
+        }
+        
+        #statusMsg {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8); color: white;
+            padding: 10px 20px; border-radius: 5px;
+            display: none; z-index: 200;
+        }
+        
+        /* --- CÔNG CỤ HIỂN THỊ (Offset Cursor & Loupe) --- */
+        #touchCursor {
+            position: fixed;
+            pointer-events: none;
+            border: 2px dashed #FFF;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+            display: none;
+            transition: width 0.1s, height 0.1s, border-color 0.2s;
+        }
+        #loupeDiv {
+            position: fixed;
+            pointer-events: none;
+            border: 3px solid #00e5ff; /* Mỏng hơn cho iPhone */
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9998;
+            display: none;
+            overflow: hidden;
+            background-repeat: no-repeat;
+        }
+
+        /* --- THANH CÔNG CỤ DỌC (Sidebar) - Thu nhỏ cho iPhone --- */
+        .sidebar-wrapper {
+            position: fixed;
+            top: 0;
+            right: 0; /* Mặc định bên phải */
+            height: 100%;
+            display: flex;
+            align-items: center;
+            z-index: 100;
+            transition: transform 0.3s ease-out;
+        }
+        .sidebar-wrapper.hidden { transform: translateX(100%); }
+        .sidebar-wrapper.left.hidden { transform: translateX(-100%); }
+        .sidebar-wrapper.left { right: auto; left: 0; }
+        
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 10px; /* Thu hẹp */
+            align-items: center;
+            background: rgba(30, 30, 30, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 10px; /* Thu hẹp */
+            height: auto;
+            max-height: 95%;
+            border-radius: 12px;
+            border: 1px solid #444;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .sidebar-wrapper:not(.left) .sidebar { margin-right: 5px; } /* Gần mép hơn */
+        .sidebar-wrapper.left .sidebar { margin-left: 5px; }
+        
+        .divider { width: 80%; height: 1px; background: #555; }
+
+        .tool-btn {
+            font-size: 18px; /* Thu nhỏ */
+            background: #555;
+            color: #fff;
+            border: none;
+            width: 40px; height: 40px; /* Thu nhỏ */
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .tool-btn:active { background: #777; }
+        
+        #hideUIBtn {
+            position: absolute;
+            top: 50%;
+            left: -30px; 
+            transform: translateY(-50%);
+            width: 18px; height: 50px; /* Thu nhỏ */
+            border-radius: 8px 0 0 8px;
+            font-size: 14px;
+            padding: 0;
+            background: #333;
+            border: 1px solid #444;
+            border-right: none;
+        }
+        .sidebar-wrapper.left #hideUIBtn {
+            left: auto;
+            right: -30px;
+            border-radius: 0 8px 8px 0;
+            border-right: 1px solid #444;
+            border-left: none;
+        }
+        
+        #showUIBtn {
+            position: fixed;
+            top: 50%;
+            right: 0; 
+            transform: translateY(-50%);
+            width: 18px; height: 50px; /* Thu nhỏ */
+            border-radius: 8px 0 0 8px;
+            font-size: 14px;
+            padding: 0;
+            background: #333;
+            border: 1px solid #444;
+            border-right: none;
+            z-index: 99;
+            display: none;
+        }
+        #showUIBtn.left {
+            right: auto;
+            left: 0;
+            border-radius: 0 8px 8px 0;
+            border-right: 1px solid #444;
+            border-left: none;
+        }
+
+        .image-info { 
+            font-family: monospace; color: #eee; font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .size-display { font-size: 12px; color: #999; margin: 5px 0; }
+        
+        .tool-btn.active { background: #00e5ff; color: #000; }
+        .tool-btn#eraser.active { background: #ff9800; }
+        .tool-btn#restore.active { background: #4CAF50; }
+        
+    </style>
+</head>
+<body>
+
+    <div id="gameUI">
+        <div id="statusMsg">Loading...</div>
+
+        <div id="viewport">
+            <div id="stage">
+                <canvas id="gameCanvas"></canvas>
+            </div>
+        </div>
+        
+        <div id="touchCursor"></div>
+        <div id="loupeDiv"></div>
+        
+        <button id="showUIBtn" onclick="toggleUI(true)">⟨</button>
+
+        <div class="sidebar-wrapper" id="sidebarWrapper">
+            <div class="sidebar">
+                <button id="hideUIBtn" onclick="toggleUI(false)">⟩</button>
+            
+                <button class="tool-btn" onclick="prevImage()" title="Ảnh trước">⬅️</button>
+                <div class="image-info" id="imgCounter">--</div>
+                <button class="tool-btn" onclick="nextImage()" title="Ảnh sau">➡️</button>
+                
+                <div class="divider"></div>
+                
+                <button class="tool-btn" id="loupe" onclick="setTool('loupe')" title="Kính Lúp">🔎</button>
+                <button class="tool-btn" id="eraser" onclick="setTool('eraser')" title="Cục Tẩy">🧼</button>
+                <button class="tool-btn" id="restore" onclick="setTool('restore')" title="Khôi Phục">🖌️</button>
+                <button class="tool-btn" id="viewBtn" ontouchstart="toggleView(true)" ontouchend="toggleView(false)" title="Giữ để xem Edit">👀</button>
+                
+                <div class="divider"></div>
+                
+                <button class="tool-btn" onclick="changeBrushSize(20)" title="Tăng Cỡ">+</button>
+                <span class="size-display" id="brushSizeDisplay">50px</span>
+                <button class="tool-btn" onclick="changeBrushSize(-20)" title="Giảm Cỡ">-</button>
+                
+                <div class="divider"></div>
+
+                <button class="tool-btn" onclick="resetView()" title="Reset View (Zoom/Pan)">🎯</button>
+                <button class="tool-btn" onclick="resetDrawing()" title="Reset Ảnh (Xóa vết tẩy)">🔄</button>
+                <button class="tool-btn" onclick="swapSide()" title="Chuyển bên Trái/Phải">↔️</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const statusMsg = document.getElementById('statusMsg');
+        const viewport = document.getElementById('viewport');
+        const stage = document.getElementById('stage');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const imgCounter = document.getElementById('imgCounter');
+        
+        const touchCursor = document.getElementById('touchCursor');
+        const loupeDiv = document.getElementById('loupeDiv');
+        const brushSizeDisplay = document.getElementById('brushSizeDisplay');
+        const toolButtons = {
+            loupe: document.getElementById('loupe'),
+            eraser: document.getElementById('eraser'),
+            restore: document.getElementById('restore')
+        };
+
+        const sidebarWrapper = document.getElementById('sidebarWrapper');
+        const hideUIBtn = document.getElementById('hideUIBtn');
+        const showUIBtn = document.getElementById('showUIBtn');
+
+        // --- Logic Vars ---
+        const imgOriginal = new Image();
+        let currentEditURL = '';
+        let currentImageIndex = 1; // Bắt đầu từ 1
+        let brushSize = 50;
+        let scale = 1; let panX = 0; let panY = 0;
+        
+        const TOUCH_OFFSET_Y = -60; // Giảm offset cho iPhone
+        let isDrawing = false; 
+        let isGesturing = false;
+        
+        let lastPanMidpoint = null;
+        let lastPinchDist = 0;
+
+        let currentTool = 'loupe';
+        let isSwitching = false;
+
+        // --- TỰ ĐỘNG CHẠY KHI MỞ FILE ---
+        window.onload = () => {
+            setTool('loupe'); // Đặt tool mặc định
+            loadPair(1); // Tự động load ảnh số 1
+        };
+
+        // --- LOAD ẢNH (Logic Web-Hosted) ---
+        function loadPair(index) {
+            if (index < 1) return; // Không cho lùi về 0
+            if (isSwitching) return;
+            
+            isSwitching = true;
+            statusMsg.style.display = 'block';
+            
+            // Tìm file trong cùng thư mục (ví dụ: "1o.jpg")
+            const urlO = `${index}o.jpg`;
+            const urlE = `${index}e.jpg`;
+
+            // Dùng 1 ảnh tạm để kiểm tra
+            const temp = new Image();
+            
+            temp.onload = () => {
+                // Nếu ảnh tạm tải OK
+                imgOriginal.onload = () => {
+                    canvas.width = imgOriginal.naturalWidth;
+                    canvas.height = imgOriginal.naturalHeight;
+                    stage.style.width = canvas.width + "px";
+                    stage.style.height = canvas.height + "px";
+                    
+                    stage.style.backgroundImage = `url('${urlE}')`;
+                    loupeDiv.style.backgroundImage = `url('${urlE}')`;
+                    
+                    resetView();
+                    drawFullOriginal();
+                    statusMsg.style.display = 'none';
+                    isSwitching = false;
+                    currentImageIndex = index; // Cập nhật index
+                };
+                imgOriginal.onerror = () => { 
+                    statusMsg.style.display = 'none';
+                    isSwitching = false;
+                    alert(`Lỗi: Không tải được ảnh ${urlE}`);
+                };
+                imgCounter.innerText = `Ảnh ${index}`;
+                imgOriginal.src = urlO;
+                currentEditURL = urlE;
+            };
+            
+            temp.onerror = () => {
+                // Nếu ảnh tạm (1o.jpg) tải lỗi (404)
+                statusMsg.style.display = 'none';
+                isSwitching = false;
+                if (index > 1) { // Chỉ báo lỗi nếu đang bấm Next
+                    alert("Đã hết ảnh trong album này.");
+                } else {
+                    alert("Lỗi: Không tìm thấy file '1o.jpg'. Hãy chắc chắn bạn đã upload ảnh.");
+                }
+            };
+            
+            temp.src = urlO; // Bắt đầu tải ảnh tạm
+        }
+
+        // --- HÀM VẼ & RESET ---
+        function drawFullOriginal() {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            ctx.drawImage(imgOriginal, 0, 0, canvas.width, canvas.height);
+        }
+
+        function resetDrawing() {
+            if (confirm("Xóa mọi vết tẩy và khôi phục ảnh gốc?")) {
+                drawFullOriginal();
+            }
+        }
+
+        function resetView() {
+            const vW = viewport.clientWidth; const vH = viewport.clientHeight;
+            const sW = vW / canvas.width; const sH = vH / canvas.height;
+            scale = Math.min(sW, sH, 1) * 0.95;
+            panX = (vW - canvas.width * scale) / 2;
+            panY = (vH - canvas.height * scale) / 2;
+            updateTransform();
+            updateToolSize();
+        }
+
+        function updateTransform() {
+            const transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+            stage.style.transform = transform;
+            loupeDiv.style.backgroundSize = `${canvas.width * scale}px ${canvas.height * scale}px`;
+        }
+
+        // --- THANH CÔNG CỤ & ĐIỀU KHIỂN ---
+        
+        function changeBrushSize(amount) {
+            brushSize += amount;
+            if (brushSize < 10) brushSize = 10;
+            if (brushSize > 500) brushSize = 500;
+            updateToolSize();
+        }
+        
+        function updateToolSize() {
+            brushSizeDisplay.innerText = brushSize + "px";
+            touchCursor.style.width = brushSize + "px";
+            touchCursor.style.height = brushSize + "px";
+            loupeDiv.style.width = brushSize + "px";
+            loupeDiv.style.height = brushSize + "px";
+        }
+
+        function nextImage() {
+            loadPair(currentImageIndex + 1);
+        }
+        function prevImage() {
+            loadPair(currentImageIndex - 1);
+        }
+
+        function setTool(toolName) {
+            currentTool = toolName;
+            Object.values(toolButtons).forEach(btn => btn.classList.remove('active'));
+            if (toolButtons[toolName]) toolButtons[toolName].classList.add('active');
+            
+            if (toolName === 'loupe') touchCursor.style.borderColor = '#00e5ff';
+            else if (toolName === 'eraser') touchCursor.style.borderColor = '#ff9800';
+            else if (toolName === 'restore') touchCursor.style.borderColor = '#4CAF50';
+        }
+
+        function toggleView(showEdit) {
+            canvas.style.opacity = showEdit ? '0' : '1';
+        }
+
+        function toggleUI(show) {
+            if (show) {
+                sidebarWrapper.classList.remove('hidden');
+                showUIBtn.style.display = 'none';
+            } else {
+                sidebarWrapper.classList.add('hidden');
+                showUIBtn.style.display = 'block';
+            }
+        }
+
+        function swapSide() {
+            sidebarWrapper.classList.toggle('left');
+            showUIBtn.classList.toggle('left');
+            if (sidebarWrapper.classList.contains('left')) {
+                hideUIBtn.innerHTML = '⟨';
+            } else {
+                hideUIBtn.innerHTML = '⟩';
+            }
+        }
+
+        // --- XỬ LÝ CẢM ỨNG (TOUCH) ---
+        
+        function getPosOnImage(clientX, clientY) {
+            const r = viewport.getBoundingClientRect();
+            const viewX = clientX - r.left;
+            const viewY = clientY - r.top;
+            return { 
+                x: (viewX - panX) / scale, 
+                y: (viewY - panY) / scale 
+            };
+        }
+
+        function applyTool(clientX, clientY) {
+            const toolX = clientX;
+            const toolY = clientY + TOUCH_OFFSET_Y;
+            
+            touchCursor.style.left = toolX + 'px';
+            touchCursor.style.top = toolY + 'px';
+            touchCursor.style.display = 'block';
+            
+            const imgPos = getPosOnImage(toolX, toolY);
+            const drawRadius = brushSize / 2 / scale;
+
+            if (currentTool === 'loupe') {
+                loupeDiv.style.left = toolX + 'px';
+                loupeDiv.style.top = toolY + 'px';
+                loupeDiv.style.display = 'block';
+                const bgX = (-imgPos.x * scale) + (brushSize / 2);
+                const bgY = (-imgPos.y * scale) + (brushSize / 2);
+                loupeDiv.style.backgroundPosition = `${bgX}px ${bgY}px`;
+                
+            } else if (currentTool === 'eraser') {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.beginPath();
+                ctx.arc(imgPos.x, imgPos.y, drawRadius, 0, Math.PI * 2);
+                ctx.fill();
+                
+            } else if (currentTool === 'restore') {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.beginPath();
+                ctx.arc(imgPos.x, imgPos.y, drawRadius, 0, Math.PI * 2);
+                ctx.save();
+                ctx.clip();
+                ctx.drawImage(imgOriginal, 0, 0);
+                ctx.restore();
+            }
+        }
+        
+        // --- BỘ LẮNG NGHE SỰ KIỆN TOUCH ---
+
+        viewport.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                isDrawing = true;
+                applyTool(e.touches[0].clientX, e.touches[0].clientY);
+                
+            } else if (e.touches.length === 2) {
+                e.preventDefault();
+                isDrawing = false; 
+                isGesturing = true;
+                
+                touchCursor.style.display = 'none';
+                loupeDiv.style.display = 'none';
+
+                lastPanMidpoint = {
+                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+                };
+                lastPinchDist = Math.hypot(
+                    e.touches[1].clientX - e.touches[0].clientX,
+                    e.touches[1].clientY - e.touches[0].clientY
+                );
+            }
+        }, { passive: false });
+
+        viewport.addEventListener('touchmove', e => {
+            e.preventDefault();
+            
+            if (isDrawing && e.touches.length === 1) {
+                applyTool(e.touches[0].clientX, e.touches[0].clientY);
+                
+            } else if (isGesturing && e.touches.length === 2) {
+                
+                // Pan
+                const newMidpoint = {
+                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+                };
+                panX += newMidpoint.x - lastPanMidpoint.x;
+                panY += newMidpoint.y - lastPanMidpoint.y;
+                lastPanMidpoint = newMidpoint;
+
+                // Zoom
+                const newPinchDist = Math.hypot(
+                    e.touches[1].clientX - e.touches[0].clientX,
+                    e.touches[1].clientY - e.touches[0].clientY
+                );
+                if (lastPinchDist === 0) lastPinchDist = newPinchDist;
+                const scaleDelta = newPinchDist / lastPinchDist;
+                
+                const newScale = scale * scaleDelta;
+                if (newScale >= 0.1 && newScale <= 50) {
+                    const rect = viewport.getBoundingClientRect();
+                    const mx = newMidpoint.x - rect.left;
+                    const my = newMidpoint.y - rect.top;
+                    
+                    panX = mx - (mx - panX) * scaleDelta;
+                    panY = my - (my - panY) * scaleDelta;
+                    scale = newScale;
+                }
+                lastPinchDist = newPinchDist;
+
+                updateTransform();
+            }
+        }, { passive: false });
+
+        viewport.addEventListener('touchend', e => {
+            isDrawing = false;
+            isGesturing = false;
+            lastPanMidpoint = null;
+            
+            touchCursor.style.display = 'none';
+            loupeDiv.style.display = 'none';
+        });
+
+    </script>
+</body>
+</html>
